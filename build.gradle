@@ -1,0 +1,43 @@
+buildscript {
+    repositories {
+        mavenLocal()
+    }
+    dependencies {
+    }
+}
+
+apply plugin:'application'
+apply plugin: "java"
+apply plugin: "groovy"
+apply plugin: "idea"
+apply plugin: "project-report"
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    compile 'org.codehaus.groovy:groovy-all:2.4.7'
+    compile 'org.apache.httpcomponents:httpclient:4.5.2'
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = 2.14
+}
+
+String buildName = System.getenv('JOB_NAME')
+String buildNumber = System.getenv('BUILD_NUMBER')
+if(buildName && buildNumber) {
+    version "${buildName.tokenize('-').last()}-$buildNumber"
+} else {
+    version 'development'
+}
+
+mainClassName = "com.thomsonreuters.graphfeed.sdk.GraphFeed"
+
+jar {
+    archiveName 'graphfeed-sdk.jar'
+}
