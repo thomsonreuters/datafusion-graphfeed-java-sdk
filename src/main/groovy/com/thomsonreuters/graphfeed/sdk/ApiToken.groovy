@@ -7,11 +7,10 @@ class ApiToken {
     Date issuedAt
 
     public boolean isExpired() {
+        boolean isOld = false
         use (TimeCategory) {
-            if (issuedAt.after(new Date() - 70.minutes)) {
-                return true
-            }
+            isOld = issuedAt.before(new Date() - 50.minutes)
         }
-        return false
+        return isOld
     }
 }
