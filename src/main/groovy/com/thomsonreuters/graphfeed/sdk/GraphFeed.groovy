@@ -22,6 +22,7 @@ public class GraphFeed {
         this.authUrl = authUrl
         this.clientId = clientId
         this.clientSecret = clientSecret
+        setProxyAuthentication()
     }
 
     /**
@@ -82,6 +83,19 @@ public class GraphFeed {
                         new UsernamePasswordCredentials(proxyUser, proxyPassword)
                 )
             }
+        }
+    }
+
+    protected static void setProxyAuthentication() {
+        String proxyUser = System.properties.'http.proxyUser'
+        if (proxyUser) {
+            String proxyPassword = System.properties.'http.proxyPassword'
+            Authenticator authenticator = new Authenticator() {
+                public PasswordAuthentication getPasswordAuthentication() {
+                    return (new PasswordAuthentication(proxyUser, proxyPassword.toCharArray()))
+                }
+            }
+            Authenticator.setDefault(authenticator)
         }
     }
 
