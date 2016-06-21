@@ -6,11 +6,12 @@ buildscript {
     }
 }
 
-apply plugin:'application'
+apply plugin: "application"
 apply plugin: "java"
 apply plugin: "groovy"
 apply plugin: "idea"
 apply plugin: "project-report"
+apply plugin: "maven"
 
 sourceCompatibility = 1.8
 
@@ -40,4 +41,24 @@ mainClassName = "com.thomsonreuters.graphfeed.sdk.GraphFeed"
 
 jar {
     archiveName 'graphfeed-sdk.jar'
+}
+
+task writePom << {
+    pom {
+        project {
+            groupId 'com.thomsonreuters.graphfeed'
+            version '1.0'
+            inceptionYear '2016'
+            licenses {
+                license {
+                    name 'The Apache Software License, Version 2.0'
+                    url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    distribution 'repo'
+                }
+            }
+            scm {
+                url 'https://github.com/datafusion/graphfeed-java-sdk'
+            }
+        }
+    }.writeTo("$buildDir/pom.xml")
 }
