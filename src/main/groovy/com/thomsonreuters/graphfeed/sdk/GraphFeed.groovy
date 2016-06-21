@@ -250,7 +250,7 @@ public class GraphFeed {
                     zippedStream.close()
                 }
             case HttpStatus.SC_NO_CONTENT:
-                resumptionToken = conn.getHeaderField("X-DFGF-RESUMPTION-TOKEN")
+                resumptionToken = (conn.getHeaderField("X-DFGF-RESUMPTION-TOKEN") ?: resumptionToken)
         }
         conn.disconnect()
         return [status, resumptionToken]
