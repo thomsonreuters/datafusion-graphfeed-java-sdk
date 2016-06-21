@@ -57,6 +57,8 @@ public class GraphFeed {
         RESTClient restClient = new RESTClient(defaultUri ?: '/')
         setProxy(restClient)
         restClient.ignoreSSLIssues()
+        restClient.getClient().getParams().setParameter("http.connection.timeout", new Integer(10 * 60 * 1000)) // ten mins
+        restClient.getClient().getParams().setParameter("http.socket.timeout", new Integer(10 * 60 * 1000))
         restClient
     }
 
