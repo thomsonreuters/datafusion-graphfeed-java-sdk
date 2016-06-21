@@ -192,10 +192,10 @@ public class GraphFeed {
      * @param contentSetId - The ID of the content set to consume
      * @param outStream - The OutputStream to which the RDF will be written
      * @param resumptionToken - Optional resumption token (leave null or pass in empty string to start consuming the content set from the beginning)
-     * @return the HTTP status code for the final fetch (should be 204 for a successfully completed consume operation)
+     * @return a List of (int status, String resumptionToken) where the HTTP status code should be 200 (or 204 for the last page/chunk)
      * @throws IOException
      */
-    public int consume(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
+    public List consume(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
         Integer status = HttpStatus.SC_OK
         int retryCount = 10
         while (status != HttpStatus.SC_NO_CONTENT && retryCount > 0) {
@@ -207,10 +207,7 @@ public class GraphFeed {
                 retryCount = 10
             }
         }
-        if (retryCount < 1) {
-            throw new IOException("Failed to fully consume content set $contentSetId -- failed (after 10 retries) with status code $status")
-        }
-        return status
+        return [status, resumptionToken]
     }
 
     /**
@@ -226,16 +223,18 @@ public class GraphFeed {
         conn.setRequestProperty('Authorization', "Bearer ${getAccessToken()}")
         conn.connect()
         Integer status = conn.responseCode
-        if (status == HttpStatus.SC_OK) {
-            GZIPInputStream zippedStream = new GZIPInputStream(conn.inputStream)
-            try {
-                outStream << zippedStream
-            } catch (Exception ex) {
-                throw new IOException("Failed to read content from consume endpoint", ex)
-            } finally {
-                zippedStream.close()
-            }
-            resumptionToken = conn.getHeaderField("X-DFGF-RESUMPTION-TOKEN")
+        switch(status) {
+            case HttpStatus.SC_OK:
+                GZIPInputStream zippedStream = new GZIPInputStream(conn.inputStream)
+                try {
+                    outStream << zippedStream
+                } catch (Exception ex) {
+                    throw new IOException("Failed to read content from consume endpoint", ex)
+                } finally {
+                    zippedStream.close()
+                }
+            case HttpStatus.SC_NO_CONTENT:
+                resumptionToken = conn.getHeaderField("X-DFGF-RESUMPTION-TOKEN")
         }
         conn.disconnect()
         return [status, resumptionToken]
@@ -252,7 +251,9 @@ public class GraphFeed {
         GraphFeed graphFeed = new GraphFeed(url, authUrl, clientId, clientSecret)
 
         if (contentSetId) {
-            graphFeed.consume(contentSetId, System.out, resumptionToken)
+            int status
+            (status, resumptionToken) = graphFeed.consume(contentSetId, System.out, resumptionToken)
+            System.err.println "Finished with status $status, resumptionToken $resumptionToken"
         } else {
             println graphFeed.getContentSets()
             println graphFeed.getContentSet(1)
