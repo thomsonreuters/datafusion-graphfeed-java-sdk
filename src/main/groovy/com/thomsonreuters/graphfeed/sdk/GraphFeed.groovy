@@ -11,6 +11,9 @@ import java.util.zip.GZIPInputStream
 
 public class GraphFeed {
 
+    protected static final String HEADER_RESUMPTION_TOKEN = 'X-DFGF-RESUMPTION-TOKEN'
+    protected static final String HEADER_REMAINING_COUNT = 'X-DFGF-REMAINING-COUNT'
+
     protected String url
     protected String authUrl
     protected String clientId
@@ -26,8 +29,7 @@ public class GraphFeed {
     }
 
     /**
-     * Returns an access token for the current credentials.
-     * @return
+     * @return An access token for the current credentials.  Will automatically generate a new token if the current is expired.
      * @throws IOException
      */
     public String getAccessToken() throws IOException {
@@ -101,7 +103,6 @@ public class GraphFeed {
 
     /**
      * Retrieve all content sets.
-     * @return
      * @throws IOException
      */
     public Collection<ContentSet> getContentSets() throws IOException {
@@ -126,7 +127,6 @@ public class GraphFeed {
     /**
      * Retrieve an individual content set.
      * @param contentSetId
-     * @return
      * @throws IOException
      */
     public ContentSet getContentSet(Long contentSetId) throws IOException {
@@ -148,7 +148,6 @@ public class GraphFeed {
 
     /**
      * Retrieve a collection of all entitlements.
-     * @return
      * @throws IOException
      */
     public Collection<Entitlement> getEntitlements() throws IOException {
@@ -178,7 +177,6 @@ public class GraphFeed {
     /**
      * Retrieve an individual entitlement.
      * @param entitlementId
-     * @return
      * @throws IOException
      */
     public Entitlement getEntitlement(Long entitlementId) throws IOException {
@@ -208,22 +206,21 @@ public class GraphFeed {
      * @param contentSetId - The ID of the content set to consume
      * @param outStream - The OutputStream to which the RDF will be written
      * @param resumptionToken - Optional resumption token (leave null or pass in empty string to start consuming the content set from the beginning)
-     * @return a List of (int status, String resumptionToken) where the HTTP status code should be 200 (or 204 for the last page/chunk)
      * @throws IOException
      */
-    public List consume(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
-        Integer status = HttpStatus.SC_OK
+    public ConsumeResponse consumeFully(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
+        ConsumeResponse consumeResponse = new ConsumeResponse(statusCode: HttpStatus.SC_OK, resumptionToken: resumptionToken)
         int retryCount = 10
-        while (status != HttpStatus.SC_NO_CONTENT && retryCount > 0) {
-            (status, resumptionToken) = consumeOneChunk(contentSetId, outStream, resumptionToken)
-            if (status != HttpStatus.SC_OK && status != HttpStatus.SC_NO_CONTENT) {
-                System.err.println "Got unexpected status code: $status -- retrying $retryCount time(s)"
+        while (consumeResponse.statusCode != HttpStatus.SC_NO_CONTENT && retryCount > 0) {
+            consumeResponse = consume(contentSetId, outStream, consumeResponse.resumptionToken)
+            if (consumeResponse.statusCode != HttpStatus.SC_OK && consumeResponse.statusCode != HttpStatus.SC_NO_CONTENT) {
+                System.err.println "Got unexpected status code: ${consumeResponse.statusCode} -- retrying $retryCount time(s)"
                 retryCount--
-            } else if (status == HttpStatus.SC_OK) {
+            } else if (consumeResponse.statusCode == HttpStatus.SC_OK) {
                 retryCount = 10
             }
         }
-        return [status, resumptionToken]
+        return consumeResponse
     }
 
     /**
@@ -231,15 +228,14 @@ public class GraphFeed {
      * @param contentSetId - The ID of the content set to consume
      * @param outStream - The OutputStream to which the RDF will be written
      * @param resumptionToken - Optional resumption token (leave null or pass in empty string to consume the first chunk/page of the content set)
-     * @return a List of (int status, String resumptionToken) where the HTTP status code should be 200 (or 204 for the last page/chunk)
      * @throws IOException
      */
-    public List consumeOneChunk(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
+    public ConsumeResponse consume(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(this.url + "/contentSet/$contentSetId/consume?resumptionToken=${resumptionToken ?: ''}").openConnection()
         conn.setRequestProperty('Authorization', "Bearer ${getAccessToken()}")
         conn.connect()
-        Integer status = conn.responseCode
-        switch(status) {
+        ConsumeResponse consumeResponse = new ConsumeResponse(statusCode: conn.responseCode)
+        switch(consumeResponse.statusCode) {
             case HttpStatus.SC_OK:
                 GZIPInputStream zippedStream = new GZIPInputStream(conn.inputStream)
                 try {
@@ -250,10 +246,11 @@ public class GraphFeed {
                     zippedStream.close()
                 }
             case HttpStatus.SC_NO_CONTENT:
-                resumptionToken = (conn.getHeaderField("X-DFGF-RESUMPTION-TOKEN") ?: resumptionToken)
+                consumeResponse.resumptionToken = (conn.getHeaderField(HEADER_RESUMPTION_TOKEN) ?: resumptionToken)
+                consumeResponse.remainingCount = (conn.getHeaderField(HEADER_REMAINING_COUNT) ?: "0").toInteger()
         }
         conn.disconnect()
-        return [status, resumptionToken]
+        return consumeResponse
     }
 
     public static void main(String[] args) {
@@ -267,9 +264,8 @@ public class GraphFeed {
         GraphFeed graphFeed = new GraphFeed(url, authUrl, clientId, clientSecret)
 
         if (contentSetId) {
-            int status
-            (status, resumptionToken) = graphFeed.consume(contentSetId, System.out, resumptionToken)
-            System.err.println "Finished with status $status, resumptionToken $resumptionToken"
+            ConsumeResponse consumeResponse = graphFeed.consumeFully(contentSetId, System.out, resumptionToken)
+            System.err.println "Finished with $consumeResponse"
         } else {
             println graphFeed.getContentSets()
             println graphFeed.getContentSet(1)
