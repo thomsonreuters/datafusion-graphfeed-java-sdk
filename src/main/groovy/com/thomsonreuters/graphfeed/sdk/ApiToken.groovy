@@ -1,5 +1,6 @@
 package com.thomsonreuters.graphfeed.sdk
 
+import groovy.json.JsonBuilder
 import groovy.time.TimeCategory
 
 class ApiToken {
@@ -12,5 +13,9 @@ class ApiToken {
             isOld = issuedAt.before(new Date() - 50.minutes)
         }
         return isOld
+    }
+
+    public String toString() {
+        return new JsonBuilder(this).toPrettyString()
     }
 }

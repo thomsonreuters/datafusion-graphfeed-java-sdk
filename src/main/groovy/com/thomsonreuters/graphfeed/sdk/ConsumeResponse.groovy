@@ -1,5 +1,7 @@
 package com.thomsonreuters.graphfeed.sdk
 
+import groovy.json.JsonBuilder
+
 /**
  * A DTO holding information about a call to the GraphFeed consume endpoint.
  */
@@ -21,6 +23,6 @@ class ConsumeResponse {
     }
 
     public String toString() {
-        return "status: $statusCode, resumptionToken: $resumptionToken, remainingCount: $remainingCount"
+        return new JsonBuilder(this).toPrettyString()
     }
 }

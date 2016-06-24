@@ -1,5 +1,7 @@
 package com.thomsonreuters.graphfeed.sdk
 
+import groovy.json.JsonBuilder
+import groovy.util.logging.Slf4j
 import groovyx.net.http.HTTPBuilder
 import groovyx.net.http.HttpResponseException
 import groovyx.net.http.RESTClient
@@ -9,6 +11,7 @@ import org.apache.http.auth.UsernamePasswordCredentials
 
 import java.util.zip.GZIPInputStream
 
+@Slf4j
 public class GraphFeed {
 
     protected static final String HEADER_RESUMPTION_TOKEN = 'X-DFGF-RESUMPTION-TOKEN'
@@ -214,7 +217,7 @@ public class GraphFeed {
         while (consumeResponse.statusCode != HttpStatus.SC_NO_CONTENT && retryCount > 0) {
             consumeResponse = consume(contentSetId, outStream, consumeResponse.resumptionToken)
             if (consumeResponse.statusCode != HttpStatus.SC_OK && consumeResponse.statusCode != HttpStatus.SC_NO_CONTENT) {
-                System.err.println "Got unexpected status code: ${consumeResponse.statusCode} -- retrying $retryCount time(s)"
+                log.warn "Got unexpected status code: ${consumeResponse.statusCode} -- retrying $retryCount time(s)"
                 retryCount--
             } else if (consumeResponse.statusCode == HttpStatus.SC_OK) {
                 retryCount = 10
@@ -264,13 +267,15 @@ public class GraphFeed {
         GraphFeed graphFeed = new GraphFeed(url, authUrl, clientId, clientSecret)
 
         if (contentSetId) {
+            log.info "Starting consumeFully"
             ConsumeResponse consumeResponse = graphFeed.consumeFully(contentSetId, System.out, resumptionToken)
-            System.err.println "Finished with $consumeResponse"
+            log.info "Finished consumeFully:"
+            log.info new JsonBuilder(consumeResponse).toPrettyString()
         } else {
-            println graphFeed.getContentSets()
-            println graphFeed.getContentSet(1)
-            println graphFeed.getEntitlements()
-            println graphFeed.getEntitlement(2)
+            log.info "Content Sets:"
+            log.info new JsonBuilder(graphFeed.getContentSets()).toPrettyString()
+            log.info "Entitlements:"
+            log.info new JsonBuilder(graphFeed.getEntitlements()).toPrettyString()
         }
     }
 }
