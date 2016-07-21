@@ -257,14 +257,24 @@ public class GraphFeed {
     }
 
     public static void main(String[] args) {
-        String url = args[0]
-        String authUrl = args[1]
-        String clientId = args[2]
-        String clientSecret = args[3]
-        String contentSetId = (args.size() > 4 ? args[4] : null)
-        String resumptionToken = (args.size() > 5 ? args[5] : null)
+        Environment env
+        try {
+            env = Environment.valueOf(args[0])
+            log.info "Using environment ${env}"
+        } catch (Exception ex) {
+            log.error "Failed to find a valid environment for value '${args[0]}'"
+            System.exit(1)
+        }
 
-        GraphFeed graphFeed = new GraphFeed(url, authUrl, clientId, clientSecret)
+        URL url = GraphFeed.class.getClassLoader().getResource("config.groovy")
+        def config = new ConfigSlurper(env.toString()).parse(url)
+
+        String clientId = args[1]
+        String clientSecret = args[2]
+        String contentSetId = (args.size() > 3 ? args[3] : null)
+        String resumptionToken = (args.size() > 4 ? args[4] : null)
+
+        GraphFeed graphFeed = new GraphFeed(config.graphfeed.api.url, config.graphfeed.auth.url, clientId, clientSecret)
 
         if (contentSetId) {
             log.info "Starting consumeFully"
