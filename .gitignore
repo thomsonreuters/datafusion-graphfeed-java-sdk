@@ -4,3 +4,4 @@ graphfeed-sdk.iml
 gradle
 build
 .gradle
+/dist

@@ -7,7 +7,11 @@ import groovy.json.JsonBuilder
  */
 class ConsumeResponse {
     String resumptionToken
+    String requestedVersion
+    String latestVersion
     Integer remainingCount
+    int size
+    long time
     private int statusCode
 
     /**

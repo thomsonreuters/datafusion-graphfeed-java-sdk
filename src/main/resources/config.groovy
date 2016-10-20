@@ -13,7 +13,7 @@ environments {
         graphfeed.auth.url = 'https://api.apigarden-qa.int.thomsonreuters.com/oauth/v1/accesstoken?grant_type=client_credentials'
     }
     PROD {
-        graphfeed.api.url = ''
-        graphfeed.auth.url = ''
+        graphfeed.api.url = 'https://api.thomsonreuters.com/v1/graphfeed'
+        graphfeed.auth.url = 'https://api.thomsonreuters.com/oauth/v1/accesstoken?grant_type=client_credentials'
     }
 }

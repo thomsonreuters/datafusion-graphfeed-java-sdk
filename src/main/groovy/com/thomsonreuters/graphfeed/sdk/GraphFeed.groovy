@@ -5,6 +5,8 @@ import groovy.util.logging.Slf4j
 import groovyx.net.http.HTTPBuilder
 import groovyx.net.http.HttpResponseException
 import groovyx.net.http.RESTClient
+import org.apache.commons.io.IOUtils
+import org.apache.commons.io.output.CountingOutputStream
 import org.apache.http.HttpStatus
 import org.apache.http.auth.AuthScope
 import org.apache.http.auth.UsernamePasswordCredentials
@@ -16,12 +18,22 @@ public class GraphFeed {
 
     protected static final String HEADER_RESUMPTION_TOKEN = 'X-DFGF-RESUMPTION-TOKEN'
     protected static final String HEADER_REMAINING_COUNT = 'X-DFGF-REMAINING-COUNT'
+    protected static final String HEADER_CONTENT_SET_VERSION = 'X-DFGF-CONTENT-SET-VERSION'
+    protected static final String HEADER_CONTENT_SET_LATEST_VERSION = 'X-DFGF-CONTENT-SET-LATEST-VERSION'
+    protected static final String HEADER_CUSTOM_ACCEPT_ENCODING = 'X-ACCEPT-ENCODING'
+    protected static final String HEADER_CUSTOM_CONTENT_ENCODING = 'X-CONTENT-ENCODING'
 
-    protected String url
-    protected String authUrl
-    protected String clientId
-    protected String clientSecret
+    String url
+    String authUrl
+    String clientId
+    String clientSecret
     protected ApiToken apiToken
+
+    public GraphFeed() {}
+
+    public GraphFeed(Environment env, String clientId, String clientSecret) {
+        this(env.config.graphfeed.api.url as String, env.config.graphfeed.auth.url as String, clientId, clientSecret)
+    }
 
     public GraphFeed(String url, String authUrl, String clientId, String clientSecret) {
         this.url = url
@@ -37,7 +49,7 @@ public class GraphFeed {
      */
     public String getAccessToken() throws IOException {
         if (this.apiToken == null || this.apiToken.isExpired()) {
-            RESTClient restClient = createRestClient(this.authUrl)
+            def restClient = createRestClient(this.authUrl)
             restClient.headers['Authorization'] = 'Basic ' + "${this.clientId}:${this.clientSecret}".getBytes('iso-8859-1').encodeBase64()
             int status = HttpStatus.SC_INTERNAL_SERVER_ERROR
             try {
@@ -59,7 +71,7 @@ public class GraphFeed {
         return apiToken.accessToken
     }
 
-    protected static RESTClient createRestClient(String defaultUri) {
+    protected createRestClient(String defaultUri) {
         RESTClient restClient = new RESTClient(defaultUri ?: '/')
         setProxy(restClient)
         restClient.ignoreSSLIssues()
@@ -205,17 +217,24 @@ public class GraphFeed {
     }
 
     /**
-     * Fully consumes a single content set, directing content to the provided OutputStream.
+     * Fully consumes a single content set given an initial resumption token, directing content to the provided OutputStream.
      * @param contentSetId - The ID of the content set to consume
+     * @param version - The version of the content set to consume
      * @param outStream - The OutputStream to which the RDF will be written
-     * @param resumptionToken - Optional resumption token (leave null or pass in empty string to start consuming the content set from the beginning)
+     * @param resumptionToken - The starting-point resumption token
      * @throws IOException
      */
-    public ConsumeResponse consumeFully(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
+    public ConsumeResponse consumeFully(String contentSetId, String version, String resumptionToken, OutputStream outStream) throws IOException {
+        StatusKeeper statusKeeper = new StatusKeeper()
+        Runtime.getRuntime().addShutdownHook(statusKeeper)
         ConsumeResponse consumeResponse = new ConsumeResponse(statusCode: HttpStatus.SC_OK, resumptionToken: resumptionToken)
         int retryCount = 10
         while (consumeResponse.statusCode != HttpStatus.SC_NO_CONTENT && retryCount > 0) {
-            consumeResponse = consume(contentSetId, outStream, consumeResponse.resumptionToken)
+            consumeResponse = consume(contentSetId, version, consumeResponse.resumptionToken, outStream)
+            statusKeeper.lastResponse = consumeResponse
+            statusKeeper.totalSize += consumeResponse.size
+            statusKeeper.totalTime += consumeResponse.time
+            statusKeeper.totalCalls++
             if (consumeResponse.statusCode != HttpStatus.SC_OK && consumeResponse.statusCode != HttpStatus.SC_NO_CONTENT) {
                 log.warn "Got unexpected status code: ${consumeResponse.statusCode} -- retrying $retryCount time(s)"
                 retryCount--
@@ -223,65 +242,115 @@ public class GraphFeed {
                 retryCount = 10
             }
         }
+        consumeResponse.size = statusKeeper.totalSize
+        consumeResponse.time = statusKeeper.totalTime
+        Runtime.getRuntime().removeShutdownHook(statusKeeper)
         return consumeResponse
     }
 
     /**
      * Consume a single chunk/page of a content set, directing content to the provided OutputStream.
      * @param contentSetId - The ID of the content set to consume
+     * @param version - The version of the content set to consume
      * @param outStream - The OutputStream to which the RDF will be written
-     * @param resumptionToken - Optional resumption token (leave null or pass in empty string to consume the first chunk/page of the content set)
+     * @param resumptionToken - The resumption token identifying the chunk to retrieve
      * @throws IOException
      */
-    public ConsumeResponse consume(String contentSetId, OutputStream outStream, String resumptionToken = null) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(this.url + "/contentSet/$contentSetId/consume?resumptionToken=${resumptionToken ?: ''}").openConnection()
+    public ConsumeResponse consume(String contentSetId, String version, String resumptionToken, OutputStream outStream) throws IOException {
+        def conn = createUrlConnection(this.url + "/contentSet/$contentSetId/consume?version=$version&resumptionToken=${resumptionToken ?: ''}")
         conn.setRequestProperty('Authorization', "Bearer ${getAccessToken()}")
+        long startTime = System.currentTimeMillis()
         conn.connect()
         ConsumeResponse consumeResponse = new ConsumeResponse(statusCode: conn.responseCode)
-        switch(consumeResponse.statusCode) {
+        switch (consumeResponse.statusCode) {
             case HttpStatus.SC_OK:
                 GZIPInputStream zippedStream = new GZIPInputStream(conn.inputStream)
+                CountingOutputStream countStream = new CountingOutputStream(outStream)
                 try {
-                    outStream << zippedStream
+                    countStream << zippedStream
                 } catch (Exception ex) {
                     throw new IOException("Failed to read content from consume endpoint", ex)
                 } finally {
                     zippedStream.close()
                 }
+                consumeResponse.size = countStream.count
+                consumeResponse.time = (System.currentTimeMillis() - startTime)
             case HttpStatus.SC_NO_CONTENT:
                 consumeResponse.resumptionToken = (conn.getHeaderField(HEADER_RESUMPTION_TOKEN) ?: resumptionToken)
                 consumeResponse.remainingCount = (conn.getHeaderField(HEADER_REMAINING_COUNT) ?: "0").toInteger()
+                consumeResponse.requestedVersion = conn.getHeaderField(HEADER_CONTENT_SET_VERSION)
+                consumeResponse.latestVersion = conn.getHeaderField(HEADER_CONTENT_SET_LATEST_VERSION)
         }
         conn.disconnect()
         return consumeResponse
     }
 
-    public static void main(String[] args) {
-        Environment env
-        try {
-            env = Environment.valueOf(args[0])
-            log.info "Using environment ${env}"
-        } catch (Exception ex) {
-            log.error "Failed to find a valid environment for value '${args[0]}'"
-            System.exit(1)
+    /**
+     * Download the initial file of RDF content for the given content set.
+     * @param contentSetId - The ID of the content set to download
+     * @param outStream - The OutputStream to which the RDF will be written
+     * @param version - Optional version number.  If not provided, the latest version of the content set will be retrieved.
+     * @param encoding - Optional encoding.  If not provided, the default is Encoding.BZIP2
+     * @throws IOException
+     */
+    public ConsumeResponse bulk(String contentSetId, OutputStream outStream, String version = null, Encoding encoding = Encoding.BZIP2) {
+        def conn = createUrlConnection(this.url + "/contentSet/$contentSetId/bulk${version ? "?version=$version": ''}")
+        conn.setRequestProperty('Authorization', "Bearer ${getAccessToken()}")
+        conn.setRequestProperty(HEADER_CUSTOM_ACCEPT_ENCODING, encoding.type)
+        long startTime = System.currentTimeMillis()
+        conn.connect()
+        ConsumeResponse consumeResponse = new ConsumeResponse(statusCode: conn.responseCode)
+        if (consumeResponse.statusCode == HttpStatus.SC_OK) {
+            CountingOutputStream countStream = new CountingOutputStream(outStream)
+            try {
+                countStream << conn.inputStream
+            } catch (Exception ex) {
+                throw new IOException("Failed to read content from bulk endpoint", ex)
+            } finally {
+                IOUtils.closeQuietly(countStream)
+            }
+            consumeResponse.resumptionToken = conn.getHeaderField(HEADER_RESUMPTION_TOKEN)
+            consumeResponse.requestedVersion = conn.getHeaderField(HEADER_CONTENT_SET_VERSION)
+            consumeResponse.latestVersion = conn.getHeaderField(HEADER_CONTENT_SET_LATEST_VERSION)
+            consumeResponse.size = countStream.count
+            consumeResponse.time = (System.currentTimeMillis() - startTime)
         }
+        conn.disconnect()
+        return consumeResponse
+    }
 
-        URL url = GraphFeed.class.getClassLoader().getResource("config.groovy")
-        def config = new ConfigSlurper(env.toString()).parse(url)
+    protected createUrlConnection(String path) {
+        return new URL(path).openConnection()
+    }
+
+    public static void main(String[] args) {
+        Environment env = Environment.PROD
 
         String clientId = args[1]
         String clientSecret = args[2]
         String contentSetId = (args.size() > 3 ? args[3] : null)
-        String resumptionToken = (args.size() > 4 ? args[4] : null)
 
-        GraphFeed graphFeed = new GraphFeed(config.graphfeed.api.url, config.graphfeed.auth.url, clientId, clientSecret)
-
-        if (contentSetId) {
-            log.info "Starting consumeFully"
-            ConsumeResponse consumeResponse = graphFeed.consumeFully(contentSetId, System.out, resumptionToken)
-            log.info "Finished consumeFully:"
+        if (args[0].equalsIgnoreCase('bulk')) {
+            String version = (args.size() > 4 ? (args[4] ?: null) : null)
+            env = (args.size() > 5 ? Environment.valueOf(args[5]) : env)
+            GraphFeed graphFeed = new GraphFeed(env, clientId, clientSecret)
+            log.info "Starting bulk download"
+            ConsumeResponse consumeResponse = graphFeed.bulk(contentSetId, System.out, version)
+//            ConsumeResponse consumeResponse = graphFeed.bulk(contentSetId, new NullOutputStream(), version)
+            log.info "Finished bulk download:"
+            log.info new JsonBuilder(consumeResponse).toPrettyString()
+        } else if (args[0].equalsIgnoreCase('consume')) {
+            String version = args[4]
+            String resumptionToken = args[5]
+            env = (args.size() > 6 ? Environment.valueOf(args[6]) : env)
+            GraphFeed graphFeed = new GraphFeed(env, clientId, clientSecret)
+            log.info "Starting consume (fully)"
+            ConsumeResponse consumeResponse = graphFeed.consumeFully(contentSetId, version, resumptionToken, System.out)
+            log.info "Finished consume:"
             log.info new JsonBuilder(consumeResponse).toPrettyString()
         } else {
+            env = (args.size() > 4 ? Environment.valueOf(args[4]) : env)
+            GraphFeed graphFeed = new GraphFeed(env, clientId, clientSecret)
             log.info "Content Sets:"
             log.info new JsonBuilder(graphFeed.getContentSets()).toPrettyString()
             log.info "Entitlements:"
