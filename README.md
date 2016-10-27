@@ -1,6 +1,6 @@
 # Data Fusion Graph Feed Java SDK
 
-[![License](http://img.shields.io/:license-apache 2.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/thomsonreuters/datafusion-graphfeed-java-sdk/blob/master/LICENSE.md)
 
 ## Overview
 
