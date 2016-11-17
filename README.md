@@ -4,7 +4,7 @@
 
 ## Overview
 
-This is a Java SDK that can be used in your project to consume the Data Fusion Graph Feed API.
+This is a SDK that can be used in any JVM-based project to consume the Data Fusion Graph Feed API.
 
 ## Getting started
 
