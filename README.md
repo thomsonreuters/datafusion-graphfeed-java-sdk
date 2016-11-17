@@ -18,9 +18,14 @@ compile "com.thomsonreuters:graphfeed-sdk:1.0.0"
 
 Once you have the dependency installed in your project, you can start using it by creating an instance of the [GraphFeed](https://github.com/thomsonreuters/datafusion-graphfeed-java-sdk/blob/master/src/main/groovy/com/thomsonreuters/graphfeed/sdk/GraphFeed.groovy) class with your OAuth credentials.
 
-## Contribution Guidelines
+## Contributing
 
-[Individual Contributor License Agreement](https://github.com/thomsonreuters/datafusion-graphfeed-java-sdk/raw/master/individual-contributor-license-agreement.pdf)
+In the event you would like to contribute to this repository, it is required that you read and sign the following:
+
+* [Individual Contributor License Agreement](https://github.com/thomsonreuters/datafusion-graphfeed-java-sdk/raw/master/individual-contributor-license-agreement.pdf)
+* [Entity Contributor License Agreement](https://github.com/thomsonreuters/datafusion-graphfeed-java-sdk/raw/master/entity-contributor-license-agreement.pdf)
+
+Please email a signed and scanned copy to sdkagreement@thomsonreuters.com. If you require that a signed agreement has to be physically mailed to us, please email the request for a mailing address and we will get back to you on where you can send the signed documents.
 
 ## Issue Management
 
