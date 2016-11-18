@@ -1,4 +1,5 @@
 group "com.thomsonreuters"
+version file('version.txt').text.trim()
 
 apply plugin: "application"
 apply plugin: "java"
