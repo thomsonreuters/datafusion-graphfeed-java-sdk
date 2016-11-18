@@ -23,6 +23,7 @@
 package com.thomsonreuters.graphfeed.sdk
 
 import groovy.json.JsonBuilder
+import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
 import groovyx.net.http.HTTPBuilder
 import groovyx.net.http.HttpResponseException
@@ -315,25 +316,32 @@ public class GraphFeed {
      * @param encoding - Optional encoding.  If not provided, the default is Encoding.BZIP2
      * @throws IOException
      */
-    public ConsumeResponse bulk(String contentSetId, OutputStream outStream, String version = null, Encoding encoding = Encoding.BZIP2) {
-        def conn = createUrlConnection(this.url + "/contentSet/$contentSetId/bulk${version ? "?version=$version": ''}")
+    public ConsumeResponse download(String contentSetId, OutputStream outStream, String version = null, Encoding encoding = Encoding.BZIP2) {
+        def conn = createUrlConnection(this.url + "/contentSet/$contentSetId/download${version ? "?version=$version": ''}")
         conn.setRequestProperty('Authorization', "Bearer ${getAccessToken()}")
         conn.setRequestProperty(HEADER_CUSTOM_ACCEPT_ENCODING, encoding.type)
         long startTime = System.currentTimeMillis()
         conn.connect()
         ConsumeResponse consumeResponse = new ConsumeResponse(statusCode: conn.responseCode)
         if (consumeResponse.statusCode == HttpStatus.SC_OK) {
-            CountingOutputStream countStream = new CountingOutputStream(outStream)
-            try {
-                countStream << conn.inputStream
-            } catch (Exception ex) {
-                throw new IOException("Failed to read content from bulk endpoint", ex)
-            } finally {
-                IOUtils.closeQuietly(countStream)
-            }
             consumeResponse.resumptionToken = conn.getHeaderField(HEADER_RESUMPTION_TOKEN)
             consumeResponse.requestedVersion = conn.getHeaderField(HEADER_CONTENT_SET_VERSION)
             consumeResponse.latestVersion = conn.getHeaderField(HEADER_CONTENT_SET_LATEST_VERSION)
+            def jsonResponse = new JsonSlurper().parse(conn.inputStream)
+            conn.disconnect()
+
+            String downloadUrl = jsonResponse.downloadUrl
+            conn = createUrlConnection(downloadUrl)
+            CountingOutputStream countStream = new CountingOutputStream(outStream)
+            if (consumeResponse.statusCode == HttpStatus.SC_OK) {
+                try {
+                    countStream << conn.inputStream
+                } catch (Exception ex) {
+                    throw new IOException("Failed to read content from download URL", ex)
+                } finally {
+                    IOUtils.closeQuietly(countStream)
+                }
+            }
             consumeResponse.size = countStream.count
             consumeResponse.time = (System.currentTimeMillis() - startTime)
         }
@@ -352,14 +360,14 @@ public class GraphFeed {
         String clientSecret = args[2]
         String contentSetId = (args.size() > 3 ? args[3] : null)
 
-        if (args[0].equalsIgnoreCase('bulk')) {
+        if (args[0].equalsIgnoreCase('download')) {
             String version = (args.size() > 4 ? (args[4] ?: null) : null)
             env = (args.size() > 5 ? Environment.valueOf(args[5]) : env)
             GraphFeed graphFeed = new GraphFeed(env, clientId, clientSecret)
-            log.info "Starting bulk download"
-            ConsumeResponse consumeResponse = graphFeed.bulk(contentSetId, System.out, version)
-//            ConsumeResponse consumeResponse = graphFeed.bulk(contentSetId, new NullOutputStream(), version)
-            log.info "Finished bulk download:"
+            log.info "Starting download"
+            ConsumeResponse consumeResponse = graphFeed.download(contentSetId, System.out, version)
+//            ConsumeResponse consumeResponse = graphFeed.download(contentSetId, new NullOutputStream(), version)
+            log.info "Finished download:"
             log.info new JsonBuilder(consumeResponse).toPrettyString()
         } else if (args[0].equalsIgnoreCase('consume')) {
             String version = args[4]

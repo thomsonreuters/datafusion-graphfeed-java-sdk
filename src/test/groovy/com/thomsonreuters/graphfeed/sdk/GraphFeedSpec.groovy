@@ -45,21 +45,23 @@ class GraphFeedSpec extends Specification {
         graphFeed.clientSecret = 'clientSecret'
     }
 
-    void 'bulk - bzip2'() {
+    void 'download - bzip2'() {
         given:
         ByteArrayOutputStream outStream = new ByteArrayOutputStream()
         Map authClient = createAuthClient()
         MockConnection mockConn = new MockConnection(HttpStatus.SC_OK, true)
+        MockS3Connection mockS3Conn = new MockS3Connection(HttpStatus.SC_OK, true)
 
         when:
-        ConsumeResponse consumeResponse = graphFeed.bulk("1", outStream)
+        ConsumeResponse consumeResponse = graphFeed.download("1", outStream)
 
         then:
-        1 * graphFeed.createUrlConnection(Environment.PROD.config.graphfeed.api.url + "/contentSet/1/bulk") >> mockConn
+        1 * graphFeed.createUrlConnection(Environment.PROD.config.graphfeed.api.url + "/contentSet/1/download") >> mockConn
         1 * graphFeed.createRestClient(Environment.PROD.config.graphfeed.auth.url as String) >> authClient
+        1 * graphFeed.createUrlConnection(MockConnection.S3_URL_BZIP2) >> mockS3Conn
         authClient.headers['Authorization'] == 'Basic ' + "clientId:clientSecret".getBytes('iso-8859-1').encodeBase64()
         mockConn.verify(AUTH_TOKEN, Encoding.BZIP2.type)
-        new BZip2CompressorInputStream(new ByteArrayInputStream(outStream.toByteArray())).text == MockConnection.RDF
+        new BZip2CompressorInputStream(new ByteArrayInputStream(outStream.toByteArray())).text == MockS3Connection.RDF
         consumeResponse.statusCode == HttpStatus.SC_OK
         consumeResponse.resumptionToken == MockConnection.RESUMPTION_TOKEN
         consumeResponse.requestedVersion == MockConnection.CURRENT_VERSION
@@ -67,21 +69,23 @@ class GraphFeedSpec extends Specification {
         consumeResponse.size == 225
     }
 
-    void 'bulk - gzip'() {
+    void 'download - gzip'() {
         given:
         ByteArrayOutputStream outStream = new ByteArrayOutputStream()
         Map authClient = createAuthClient()
         MockConnection mockConn = new MockConnection(HttpStatus.SC_OK, false)
+        MockS3Connection mockS3Conn = new MockS3Connection(HttpStatus.SC_OK, false)
 
         when:
-        ConsumeResponse consumeResponse = graphFeed.bulk("1", outStream, null, Encoding.GZIP)
+        ConsumeResponse consumeResponse = graphFeed.download("1", outStream, null, Encoding.GZIP)
 
         then:
-        1 * graphFeed.createUrlConnection(Environment.PROD.config.graphfeed.api.url + "/contentSet/1/bulk") >> mockConn
+        1 * graphFeed.createUrlConnection(Environment.PROD.config.graphfeed.api.url + "/contentSet/1/download") >> mockConn
         1 * graphFeed.createRestClient(Environment.PROD.config.graphfeed.auth.url as String) >> authClient
+        1 * graphFeed.createUrlConnection(MockConnection.S3_URL_GZIP) >> mockS3Conn
         authClient.headers['Authorization'] == 'Basic ' + "clientId:clientSecret".getBytes('iso-8859-1').encodeBase64()
         mockConn.verify(AUTH_TOKEN, Encoding.GZIP.type)
-        new GZIPInputStream(new ByteArrayInputStream(outStream.toByteArray())).text == MockConnection.RDF
+        new GZIPInputStream(new ByteArrayInputStream(outStream.toByteArray())).text == MockS3Connection.RDF
         consumeResponse.statusCode == HttpStatus.SC_OK
         consumeResponse.resumptionToken == MockConnection.RESUMPTION_TOKEN
         consumeResponse.requestedVersion == MockConnection.CURRENT_VERSION
@@ -137,7 +141,8 @@ class GraphFeedSpec extends Specification {
 
 class MockConnection {
 
-    public static final String RDF = "<http://data.thomsonreuters.com/sc/supplychain_agreement/4298532259_4295860302> <http://cm-well-uk-lab.int.thomsonreuters.com/meta/nn#lastUpdated> \"2016-02-12T01:08:33.255+00:00\"^^<http://www.w3.org/2001/XMLSchema#dateTime> ."
+    public static final String S3_URL_GZIP = 'http://someurl.com/download/1.cache.nt.gz'
+    public static final String S3_URL_BZIP2 = 'http://someurl.com/download/1.cache.nt.bz2'
     public static final String RESUMPTION_TOKEN = 'resumption_token'
     public static final String CURRENT_VERSION = "1"
     public static final String LATEST_VERSION = "2"
@@ -152,7 +157,7 @@ class MockConnection {
         _responseCode = responseCode
         this.zipAsBzip2 = zipAsBzip2
         this.resumptionToken = (resumptionToken ?: RESUMPTION_TOKEN)
-        this.rdf = (rdf ?: RDF)
+        this.rdf = rdf
     }
 
     public void verify(requestAuthToken, requestAcceptEncoding) {
@@ -175,16 +180,53 @@ class MockConnection {
     String getHeaderField(String headerName) {
         if (headerName == GraphFeed.HEADER_RESUMPTION_TOKEN) {
             return resumptionToken
-            // Swap these when the unfortunate Apigee handling (botching) of content-encoding is fixed.
-//        } else if (headerName == HttpHeaders.CONTENT_ENCODING) {
-        } else if (headerName == GraphFeed.HEADER_CUSTOM_CONTENT_ENCODING) {
-            return (zipAsBzip2 ? 'bzip2' : 'gzip')
         } else if (headerName == GraphFeed.HEADER_CONTENT_SET_VERSION) {
             return CURRENT_VERSION
         } else if (headerName == GraphFeed.HEADER_CONTENT_SET_LATEST_VERSION) {
             return LATEST_VERSION
         }
     }
+
+    void connect() {}
+    void disconnect() {}
+    String getResponseMessage() { return '' }
+
+    InputStream getInputStream() {
+        if (!rdf) {
+            return new ByteArrayInputStream("{\"downloadUrl\": \"${zipAsBzip2 ? S3_URL_BZIP2 : S3_URL_GZIP}\"}".getBytes('UTF-8'))
+        }
+        return getZippedInputStream(this.rdf)
+    }
+
+    private InputStream getZippedInputStream(String text) {
+        ByteArrayOutputStream byteOutStream = new ByteArrayOutputStream()
+        OutputStream zippedOutStream
+        if (zipAsBzip2) {
+            zippedOutStream = new BZip2CompressorOutputStream(byteOutStream)
+        } else {
+            zippedOutStream = new GZIPOutputStream(byteOutStream)
+        }
+        zippedOutStream << new ByteArrayInputStream(text.bytes)
+        zippedOutStream.close()
+        return new ByteArrayInputStream(byteOutStream.toByteArray())
+    }
+}
+
+class MockS3Connection {
+
+    public static final String RDF = "<http://data.thomsonreuters.com/sc/supplychain_agreement/4298532259_4295860302> <http://cm-well-uk-lab.int.thomsonreuters.com/meta/nn#lastUpdated> \"2016-02-12T01:08:33.255+00:00\"^^<http://www.w3.org/2001/XMLSchema#dateTime> ."
+
+    int _responseCode
+    boolean zipAsBzip2
+    String rdf
+
+    public MockS3Connection(int responseCode, boolean zipAsBzip2 = false, String rdf = null) {
+        _responseCode = responseCode
+        this.zipAsBzip2 = zipAsBzip2
+        this.rdf = (rdf ?: RDF)
+    }
+
+    int getResponseCode() { return _responseCode }
 
     void connect() {}
     void disconnect() {}
