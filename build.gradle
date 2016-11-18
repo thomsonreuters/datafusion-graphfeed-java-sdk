@@ -34,7 +34,7 @@ dependencies {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = 2.14
+    gradleVersion = 3.2
 }
 
 String buildName = System.getenv('JOB_NAME')
