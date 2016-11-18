@@ -1,4 +1,4 @@
-group "com.thomsonreuters"
+group "com.thomsonreuters.datafusion"
 version file('version.txt').text.trim()
 
 apply plugin: "application"
