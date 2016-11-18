@@ -27,12 +27,22 @@ dependencies {
 }
 
 sourceCompatibility = 1.8
-mainClassName = "com.thomsonreuters.graphfeed.sdk.GraphFeed"
-
-jar {
-    archiveName 'graphfeed-sdk.jar'
-}
 
 task wrapper(type: Wrapper) {
     gradleVersion = 3.2
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+}
+publishing {
+    repositories {
+        maven {
+            url "$buildDir/repo"
+        }
+    }
 }
