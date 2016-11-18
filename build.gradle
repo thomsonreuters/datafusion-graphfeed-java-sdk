@@ -6,7 +6,8 @@ apply plugin: "java"
 apply plugin: "groovy"
 apply plugin: "idea"
 apply plugin: "project-report"
-apply plugin: 'maven-publish'
+apply plugin: 'maven'
+apply plugin: 'signing'
 
 repositories {
     mavenLocal()
@@ -32,17 +33,73 @@ task wrapper(type: Wrapper) {
     gradleVersion = 3.2
 }
 
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from components.java
-        }
-    }
+task javadocJar(type: Jar, dependsOn: groovydoc) {
+    classifier = 'javadoc'
+    from 'build/docs/groovydoc'
 }
-publishing {
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+uploadArchives {
     repositories {
-        maven {
-            url "$buildDir/repo"
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: sonatypeUsername, password: sonatypePassword)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            pom.project {
+                name 'GraphFeed SDK'
+                packaging 'jar'
+                description 'GraphFeed Java SDK provides an easy way to get started with the GraphFeed API'
+                url 'https://github.com/thomsonreuters/datafusion-graphfeed-java-sdk'
+
+                scm {
+                    url 'scm:git@github.com:thomsonreuters/datafusion-graphfeed-java-sdk.git'
+                    connection 'scm:git@github.com:thomsonreuters/datafusion-graphfeed-java-sdk.git'
+                    developerConnection 'scm:git@github.com:thomsonreuters/datafusion-graphfeed-java-sdk.git'
+                }
+
+                licenses {
+                    license {
+                        name 'The MIT License (MIT)'
+                        url 'https://opensource.org/licenses/MIT'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'obildtsen'
+                        name 'Ola Bildtsen'
+                    }
+                    developer {
+                        id 'bobbywarner'
+                        name 'Bobby Warner'
+                    }
+                    developer {
+                        id 'mjhugo'
+                        name 'Mike Hugo'
+                    }
+                }
+            }
         }
     }
 }
