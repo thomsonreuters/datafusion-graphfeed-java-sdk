@@ -54,6 +54,11 @@ public class GraphFeed {
 
     public GraphFeed() {}
 
+    public GraphFeed(String clientId, String clientSecret) {
+        Environment env = Environment.PROD
+        this(env.config.graphfeed.api.url as String, env.config.graphfeed.auth.url as String, clientId, clientSecret)
+    }
+
     public GraphFeed(Environment env, String clientId, String clientSecret) {
         this(env.config.graphfeed.api.url as String, env.config.graphfeed.auth.url as String, clientId, clientSecret)
     }
