@@ -28,6 +28,7 @@ dependencies {
 }
 
 sourceCompatibility = 1.8
+mainClassName = "com.thomsonreuters.graphfeed.sdk.GraphFeed"
 
 task wrapper(type: Wrapper) {
     gradleVersion = 3.2
