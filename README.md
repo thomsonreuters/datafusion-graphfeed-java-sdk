@@ -8,7 +8,7 @@ This is a SDK that can be used in any JVM-based project to consume the Data Fusi
 
 ## Getting started
 
-This SDK provides an easy way to get started quickly with the GraphFeed API. You can read more about the GraphFeed API endpoints available in the [documentation](http://graphfeed-docs.datafusion.thomsonreuters.com).
+This SDK provides an easy way to get started quickly with the GraphFeed API. You can read more about the GraphFeed API endpoints available in the [documentation](http://graphfeed-docs.datafusion.thomsonreuters.com) and more about SDK classes available in the [Java Docs](https://thomsonreuters.github.io/datafusion-graphfeed-java-sdk).
 
 The SDK is published to Maven Central and can be used in your Maven or Gradle project by simply including the dependency.
 
