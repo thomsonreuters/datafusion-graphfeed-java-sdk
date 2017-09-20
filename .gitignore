@@ -1,0 +1,6 @@
+graphfeed-sdk.iws
+graphfeed-sdk.ipr
+graphfeed-sdk.iml
+build
+.gradle
+/dist
